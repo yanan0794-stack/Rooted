@@ -1,0 +1,8 @@
+{
+  "name": "The Greenhouse",
+  "description": "A premium horticultural management and plant identification application.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

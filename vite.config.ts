@@ -94,7 +94,7 @@ function uploadApiPlugin() {
   };
 }
 
-function identifyApiPlugin(apiKey: string) {
+function identifyApiPlugin(apiKey: string, appId: string) {
   return {
     name: 'identify-api',
     configureServer(server: { middlewares: { use: (p: string, h: (req: any, res: any) => void) => void } }) {
@@ -107,9 +107,9 @@ function identifyApiPlugin(apiKey: string) {
           return;
         }
 
-        if (!apiKey) {
+        if (!apiKey || !appId) {
           res.statusCode = 500;
-          res.end(JSON.stringify({ error: 'DEEPSEEK_API_KEY is not set. Add it to your .env file.' }));
+          res.end(JSON.stringify({ error: 'API_KEY and APP_ID must be set in your .env file.' }));
           return;
         }
 
@@ -122,14 +122,15 @@ function identifyApiPlugin(apiKey: string) {
               imagePath: string;
             };
 
-            const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
+            const deepseekRes = await fetch('https://qianfan.baidubce.com/v2/chat/completions', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
+                'appid': appId,
               },
               body: JSON.stringify({
-                model: 'deepseek-chat',
+                model: 'qwen3-vl-235b-a22b-thinking',
                 messages: [
                   {
                     role: 'system',
@@ -142,13 +143,13 @@ function identifyApiPlugin(apiKey: string) {
                       { type: 'image_url', image_url: { url: imageData } },
                       {
                         type: 'text',
-                        text: 'Identify this plant. Respond ONLY with JSON matching this shape exactly:\n{"plant":"Common Name (Scientific Name)","description":"One sentence about this plant and its origin.","careTasks":["task 1","task 2","task 3","task 4","task 5","task 6"]}\nProvide exactly 6 specific, actionable care tasks the owner should do regularly.',
+                        text: `Identify this plant. Respond ONLY with JSON matching this exact shape:\n{"plant":"Common Name","scientificName":"Genus species","description":"Two sentences about this plant and its origin.","quickFacts":{"difficulty":"Easy|Medium|Hard","light":"e.g. Bright indirect","water":"e.g. Every 7-10 days","humidity":"e.g. High (50-60%)"},"taskGroups":[{"category":"Watering","tasks":[{"title":"Short action title","detail":"Step-by-step instruction.","frequency":"e.g. Weekly"}]},{"category":"Light","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Soil & Fertilizer","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Pruning & Cleaning","tasks":[{"title":"...","detail":"...","frequency":"..."}]}],"tips":["Pro tip 1","Pro tip 2","Pro tip 3"]}\nProvide 4 task groups with 1-3 specific, actionable tasks each.`,
                       },
                     ],
                   },
                 ],
                 response_format: { type: 'json_object' },
-                max_tokens: 800,
+                max_tokens: 1500,
               }),
             });
 
@@ -164,14 +165,26 @@ function identifyApiPlugin(apiKey: string) {
             };
             const parsed = JSON.parse(completion.choices[0].message.content);
 
-            res.end(
-              JSON.stringify({
-                plant: parsed.plant ?? 'Unknown Plant',
-                description: parsed.description ?? '',
-                imageUrl: imagePath,
-                careTasks: Array.isArray(parsed.careTasks) ? parsed.careTasks : [],
-              }),
-            );
+            const id = Date.now().toString();
+            const result = {
+              id,
+              scannedAt: new Date().toISOString(),
+              plant: parsed.plant ?? 'Unknown Plant',
+              scientificName: parsed.scientificName ?? '',
+              description: parsed.description ?? '',
+              imageUrl: imagePath,
+              quickFacts: parsed.quickFacts ?? { difficulty: '', light: '', water: '', humidity: '' },
+              taskGroups: Array.isArray(parsed.taskGroups) ? parsed.taskGroups : [],
+              tips: Array.isArray(parsed.tips) ? parsed.tips : [],
+            };
+
+            // Save identification result as JSON alongside the image
+            const jsonRelPath = imagePath.replace(/\.[^.]+$/, '.json');
+            const absJsonPath = path.resolve(__dirname, jsonRelPath);
+            fs.mkdirSync(path.dirname(absJsonPath), { recursive: true });
+            fs.writeFileSync(absJsonPath, JSON.stringify(result, null, 2));
+
+            res.end(JSON.stringify({ ...result, jsonPath: jsonRelPath }));
           } catch (err) {
             res.statusCode = 500;
             res.end(JSON.stringify({ error: String(err) }));
@@ -185,7 +198,7 @@ function identifyApiPlugin(apiKey: string) {
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react(), tailwindcss(), userApiPlugin(), uploadApiPlugin(), identifyApiPlugin(env.DEEPSEEK_API_KEY)],
+    plugins: [react(), tailwindcss(), userApiPlugin(), uploadApiPlugin(), identifyApiPlugin(env.API_KEY, env.APP_ID)],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },

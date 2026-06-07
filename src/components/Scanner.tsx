@@ -1,8 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Loader2, Shield, Camera, Bolt, Leaf, Check } from 'lucide-react';
+import { X, Loader2, Shield, Camera, Bolt, Leaf, Check, Sun, Droplets, Wind, Zap } from 'lucide-react';
 import type { PlantResult } from '../types';
 import { SUCCULENT_MACRO } from '../constants';
+
+function QuickFactCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="bg-botanical-surface rounded-xl px-3 py-2.5">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-botanical-secondary w-3 h-3">{icon}</span>
+        <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline">{label}</p>
+      </div>
+      <p className="font-body text-xs text-botanical-on-surface font-medium">{value || '—'}</p>
+    </div>
+  );
+}
 
 function PlantResultPanel({
   result,
@@ -11,9 +23,10 @@ function PlantResultPanel({
 }: {
   result: PlantResult;
   onDismiss: () => void;
-  onToggle: (id: string) => void;
+  onToggle: (groupIdx: number, taskId: string) => void;
 }) {
-  const doneCount = result.careTasks.filter(t => t.done).length;
+  const totalTasks = result.taskGroups.reduce((sum, g) => sum + g.tasks.length, 0);
+  const doneCount = result.taskGroups.reduce((sum, g) => sum + g.tasks.filter(t => t.done).length, 0);
 
   return (
     <motion.div
@@ -21,13 +34,14 @@ function PlantResultPanel({
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-      className="absolute inset-x-0 bottom-0 z-30 max-h-[85%] overflow-y-auto bg-botanical-bg rounded-t-[40px] border-t border-botanical-outline/10 shadow-2xl"
+      className="absolute inset-x-0 bottom-0 z-30 max-h-[90%] overflow-y-auto bg-botanical-bg rounded-t-[40px] border-t border-botanical-outline/10 shadow-2xl"
     >
       <div className="sticky top-0 bg-botanical-bg rounded-t-[40px] flex justify-center pt-3 pb-1 z-10">
         <div className="w-10 h-1 rounded-full bg-botanical-surface-high" />
       </div>
 
       <div className="px-6 pb-12">
+        {/* Plant header */}
         <div className="flex items-start gap-4 mt-3 mb-5">
           <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 shadow-lg">
             <img src={result.imageSrc} alt={result.plant} className="w-full h-full object-cover" />
@@ -35,41 +49,85 @@ function PlantResultPanel({
           <div className="flex-1 min-w-0 pt-1">
             <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-secondary mb-1">Identified plant</p>
             <h2 className="font-serif text-xl text-botanical-primary leading-tight">{result.plant}</h2>
-            <p className="font-body text-xs text-botanical-on-surface-variant mt-1 leading-relaxed">{result.description}</p>
+            <p className="font-mono text-[10px] text-botanical-outline italic mb-1">{result.scientificName}</p>
+            <p className="font-body text-xs text-botanical-on-surface-variant leading-relaxed">{result.description}</p>
           </div>
           <button onClick={onDismiss} className="w-8 h-8 rounded-full bg-botanical-surface-high flex items-center justify-center flex-shrink-0">
             <X className="w-4 h-4 text-botanical-outline" />
           </button>
         </div>
 
-        <div className="bg-botanical-surface rounded-xl px-4 py-3 mb-6">
-          <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline mb-1">Image saved to</p>
-          <p className="font-mono text-[10px] text-botanical-secondary break-all">{result.filePath}</p>
+        {/* Quick facts grid */}
+        <div className="grid grid-cols-2 gap-2 mb-6">
+          <QuickFactCard icon={<Zap className="w-3 h-3" />} label="Difficulty" value={result.quickFacts.difficulty} />
+          <QuickFactCard icon={<Sun className="w-3 h-3" />} label="Light" value={result.quickFacts.light} />
+          <QuickFactCard icon={<Droplets className="w-3 h-3" />} label="Water" value={result.quickFacts.water} />
+          <QuickFactCard icon={<Wind className="w-3 h-3" />} label="Humidity" value={result.quickFacts.humidity} />
         </div>
 
-        <div className="flex items-baseline justify-between mb-4">
+        {/* Saved path */}
+        <div className="bg-botanical-surface rounded-xl px-4 py-3 mb-6">
+          <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline mb-1">Guide saved to</p>
+          <p className="font-mono text-[10px] text-botanical-secondary break-all">{result.jsonPath}</p>
+        </div>
+
+        {/* Care guide header */}
+        <div className="flex items-baseline justify-between mb-5">
           <h3 className="font-serif text-2xl text-botanical-primary">Care Guide</h3>
           <span className="font-mono text-[9px] uppercase tracking-widest text-botanical-secondary">
-            {doneCount}/{result.careTasks.length} done
+            {doneCount}/{totalTasks} done
           </span>
         </div>
 
-        <div className="space-y-2">
-          {result.careTasks.map(task => (
-            <button
-              key={task.id}
-              onClick={() => onToggle(task.id)}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl glass-card text-left transition-all active:scale-[0.98]"
-            >
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.done ? 'bg-botanical-primary border-botanical-primary' : 'border-botanical-outline/40'}`}>
-                {task.done && <Check className="w-3 h-3 text-botanical-bg" />}
+        {/* Task groups */}
+        <div className="space-y-7">
+          {result.taskGroups.map((group, gi) => (
+            <div key={group.category}>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-secondary mb-2 pl-1">
+                {group.category}
+              </p>
+              <div className="space-y-2">
+                {group.tasks.map(task => (
+                  <button
+                    key={task.id}
+                    onClick={() => onToggle(gi, task.id)}
+                    className="w-full flex items-start gap-3 p-4 rounded-2xl glass-card text-left transition-all active:scale-[0.98]"
+                  >
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${task.done ? 'bg-botanical-primary border-botanical-primary' : 'border-botanical-outline/40'}`}>
+                      {task.done && <Check className="w-3 h-3 text-botanical-bg" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-body text-sm font-semibold leading-snug ${task.done ? 'line-through text-botanical-outline' : 'text-botanical-on-surface'}`}>
+                        {task.title}
+                      </p>
+                      <p className={`font-body text-xs mt-1 leading-relaxed ${task.done ? 'text-botanical-outline/60' : 'text-botanical-on-surface-variant'}`}>
+                        {task.detail}
+                      </p>
+                      <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-secondary mt-1.5">
+                        {task.frequency}
+                      </p>
+                    </div>
+                  </button>
+                ))}
               </div>
-              <span className={`font-body text-sm leading-snug ${task.done ? 'line-through text-botanical-outline' : 'text-botanical-on-surface'}`}>
-                {task.text}
-              </span>
-            </button>
+            </div>
           ))}
         </div>
+
+        {/* Pro tips */}
+        {result.tips.length > 0 && (
+          <div className="mt-8">
+            <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-secondary mb-3 pl-1">Pro Tips</p>
+            <div className="space-y-2">
+              {result.tips.map((tip, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-botanical-primary-container/20">
+                  <Leaf className="w-4 h-4 text-botanical-primary flex-shrink-0 mt-0.5" />
+                  <p className="font-body text-xs text-botanical-on-surface-variant leading-relaxed">{tip}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -123,7 +181,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename, data }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error('Upload failed');
       filePath = (await res.json()).path;
     } catch {
       setPhase('error');
@@ -143,16 +201,28 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
         throw new Error(error);
       }
       const json = await res.json();
+
       setResult({
+        id: json.id,
+        scannedAt: json.scannedAt,
         plant: json.plant,
+        scientificName: json.scientificName,
         description: json.description,
+        imageUrl: json.imageUrl,
         imageSrc: data,
-        filePath,
-        careTasks: (json.careTasks as string[]).map((text, i) => ({
-          id: `${Date.now()}-${i}`,
-          text,
-          done: false,
+        jsonPath: json.jsonPath,
+        quickFacts: json.quickFacts ?? { difficulty: '', light: '', water: '', humidity: '' },
+        taskGroups: (json.taskGroups ?? []).map((group: any, gi: number) => ({
+          category: group.category,
+          tasks: (group.tasks ?? []).map((task: any, ti: number) => ({
+            id: `${gi}-${ti}`,
+            title: task.title,
+            detail: task.detail,
+            frequency: task.frequency,
+            done: false,
+          })),
         })),
+        tips: json.tips ?? [],
       });
       setPhase('done');
     } catch (err) {
@@ -185,9 +255,18 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
     handleImageData(data, file.name);
   };
 
-  const toggleTask = (id: string) =>
+  const toggleTask = (groupIdx: number, taskId: string) =>
     setResult(prev =>
-      prev ? { ...prev, careTasks: prev.careTasks.map(t => t.id === id ? { ...t, done: !t.done } : t) } : null
+      prev
+        ? {
+            ...prev,
+            taskGroups: prev.taskGroups.map((g, gi) =>
+              gi === groupIdx
+                ? { ...g, tasks: g.tasks.map(t => (t.id === taskId ? { ...t, done: !t.done } : t)) }
+                : g
+            ),
+          }
+        : null
     );
 
   const busy = phase !== 'idle' && phase !== 'done';

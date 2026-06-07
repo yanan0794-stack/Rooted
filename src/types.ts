@@ -26,10 +26,34 @@ export interface Badge {
   type: 'featured' | 'standard' | 'locked';
 }
 
+export type CareTask = {
+  id: string;
+  title: string;
+  detail: string;
+  frequency: string;
+  done: boolean;
+};
+
+export type TaskGroup = {
+  category: string;
+  tasks: CareTask[];
+};
+
 export type PlantResult = {
+  id: string;
+  scannedAt: string;
   plant: string;
+  scientificName: string;
   description: string;
+  imageUrl: string;
   imageSrc: string;
-  filePath: string;
-  careTasks: { id: string; text: string; done: boolean }[];
+  jsonPath: string;
+  quickFacts: {
+    difficulty: string;
+    light: string;
+    water: string;
+    humidity: string;
+  };
+  taskGroups: TaskGroup[];
+  tips: string[];
 };

@@ -34,14 +34,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen bg-botanical-bg text-botanical-on-surface overflow-x-hidden selection:bg-botanical-primary selection:text-botanical-primary-container">
-      {/* Background ambience */}
-      <div className="fixed inset-0 organic-texture z-0 opacity-10" />
-      <div className="fixed inset-0 z-0 opacity-30 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-botanical-primary-container rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-botanical-surface-highest rounded-full blur-[100px]" />
-      </div>
-
+    <div className="relative min-h-screen bg-botanical-bg text-botanical-on-surface overflow-x-hidden selection:bg-botanical-secondary selection:text-white">
       <AnimatePresence mode="wait">
         {currentView === 'LOGIN' && (
           <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full">

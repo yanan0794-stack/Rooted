@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { X, Mail, Loader2, CheckCircle2 } from 'lucide-react';
 import type { AuthUser } from '../types';
 import { mockUser } from '../auth';
-import { LEAF_DETAIL, SUCCULENT_MACRO } from '../constants';
 import { GoogleIcon, AppleIcon, XBrandIcon } from './AuthIcons';
 
 export function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
@@ -35,85 +34,100 @@ export function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
     }, 1000);
   };
 
+  const inputClass =
+    'w-full bg-white border border-botanical-outline rounded-lg px-4 py-3.5 text-botanical-on-surface placeholder:text-botanical-on-surface-variant focus:outline-none focus:border-botanical-secondary focus:ring-2 focus:ring-botanical-secondary/20 transition-all text-sm';
+
+  const socialBtnClass =
+    'flex items-center justify-center gap-3 bg-white border border-botanical-outline hover:bg-botanical-surface-high transition-colors py-3 rounded-full w-full text-sm font-semibold text-botanical-on-surface disabled:opacity-50 active:scale-[0.98]';
+
   return (
-    <div className="relative z-10 flex flex-col min-h-screen">
+    <div className="relative z-10 flex flex-col min-h-screen bg-botanical-bg">
       <header className="p-6">
-        <button className="p-2 rounded-full hover:bg-botanical-surface transition-colors">
-          <X className="w-6 h-6" />
+        <button className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-[0_0_0.5px_rgba(0,0,0,0.14),0_1px_1px_rgba(0,0,0,0.24)] hover:bg-botanical-surface-high transition-colors">
+          <X className="w-5 h-5 text-botanical-on-surface-variant" />
         </button>
       </header>
 
       <main className="flex-grow flex flex-col items-center justify-center p-6 pb-24">
         <div className="w-full max-w-md">
-          <motion.p
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="font-body text-botanical-on-surface-variant text-lg text-center max-w-[280px] mx-auto leading-relaxed mb-8"
-          >
-            Step back into the quiet hum of your indoor sanctuary.
-          </motion.p>
-
+          {/* Brand mark */}
           <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="glass-panel p-8 rounded-[40px] border border-botanical-outline/10 shadow-2xl"
+            initial={{ y: -8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-center mb-8"
           >
-            <form className="space-y-6" onSubmit={handleEmailSubmit}>
-              <div className="space-y-2">
-                <label className="font-mono text-[10px] uppercase tracking-widest text-botanical-primary ml-1">Identity</label>
+            <span className="text-3xl font-bold text-botanical-primary tracking-tight">Rooted</span>
+            <p className="text-botanical-on-surface-variant text-sm mt-2 leading-relaxed">
+              Step back into the quiet hum of your indoor sanctuary.
+            </p>
+          </motion.div>
+
+          {/* ── Main card ── */}
+          <motion.div
+            initial={{ scale: 0.97, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="glass-panel p-7 rounded-2xl"
+          >
+            <form className="space-y-4" onSubmit={handleEmailSubmit}>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-widest text-botanical-primary ml-0.5">Email</label>
                 <input
                   type="email"
-                  placeholder="Email address"
+                  placeholder="your@email.com"
                   value={formEmail}
                   onChange={e => setFormEmail(e.target.value)}
-                  className="w-full bg-botanical-surface-highest/30 border-none rounded-xl px-4 py-4 text-botanical-on-surface placeholder:text-botanical-outline focus:ring-1 focus:ring-botanical-primary/40 transition-all outline-none"
+                  className={inputClass}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="font-mono text-[10px] uppercase tracking-widest text-botanical-primary ml-1">Key</label>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-widest text-botanical-primary ml-0.5">Password</label>
                 <input
                   type="password"
                   placeholder="Password"
-                  className="w-full bg-botanical-surface-highest/30 border-none rounded-xl px-4 py-4 text-botanical-on-surface placeholder:text-botanical-outline focus:ring-1 focus:ring-botanical-primary/40 transition-all outline-none"
+                  className={inputClass}
                 />
               </div>
+
+              {/* Primary CTA — Green Accent full-pill */}
               <button
                 type="submit"
                 disabled={!!loading}
-                className="w-full bg-gradient-to-br from-botanical-primary to-botanical-primary-container text-botanical-primary-container font-serif italic text-xl py-5 rounded-xl shadow-lg hover:shadow-botanical-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full bg-botanical-secondary text-white font-semibold text-base py-4 rounded-full shadow-sm hover:opacity-90 transition-all active:scale-[0.95] disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
               >
                 {loading === 'email' && <Loader2 className="w-5 h-5 animate-spin" />}
-                Enter Grove
+                Sign In
               </button>
 
-              <div className="relative flex items-center justify-center py-4">
-                <div className="flex-grow border-t border-botanical-outline/10" />
-                <span className="mx-4 font-mono text-[10px] uppercase tracking-widest text-botanical-outline">or continue with</span>
-                <div className="flex-grow border-t border-botanical-outline/10" />
+              {/* Divider */}
+              <div className="relative flex items-center justify-center py-2">
+                <div className="flex-grow border-t border-botanical-outline" />
+                <span className="mx-4 text-[11px] font-semibold uppercase tracking-widest text-botanical-on-surface-variant">or continue with</span>
+                <div className="flex-grow border-t border-botanical-outline" />
               </div>
 
-              <div className="flex flex-col gap-3">
-                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('google')} className="flex items-center justify-center gap-3 bg-botanical-surface-high/50 hover:bg-botanical-surface-highest transition-colors border border-botanical-outline/10 py-3 rounded-xl w-full text-sm font-body disabled:opacity-60">
+              {/* Social auth — outlined dark pills */}
+              <div className="flex flex-col gap-2.5">
+                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('google')} className={socialBtnClass}>
                   {loading === 'google' ? <Loader2 className="w-4 h-4 animate-spin" /> : <GoogleIcon />}
                   Continue with Google
                 </button>
 
-                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('apple')} className="flex items-center justify-center gap-3 bg-botanical-surface-high/50 hover:bg-botanical-surface-highest transition-colors border border-botanical-outline/10 py-3 rounded-xl w-full text-sm font-body disabled:opacity-60">
+                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('apple')} className={socialBtnClass}>
                   {loading === 'apple' ? <Loader2 className="w-4 h-4 animate-spin" /> : <AppleIcon />}
                   Continue with Apple
                 </button>
 
-                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('x')} className="flex items-center justify-center gap-3 bg-botanical-surface-high/50 hover:bg-botanical-surface-highest transition-colors border border-botanical-outline/10 py-3 rounded-xl w-full text-sm font-body disabled:opacity-60">
+                <button type="button" disabled={!!loading} onClick={() => loginWithProvider('x')} className={socialBtnClass}>
                   {loading === 'x' ? <Loader2 className="w-4 h-4 animate-spin" /> : <XBrandIcon />}
                   Continue with X
                 </button>
 
                 {linkStep === 'idle' && (
-                  <button type="button" disabled={!!loading} onClick={() => setLinkStep('input')} className="flex items-center justify-center gap-3 bg-botanical-surface-high/50 hover:bg-botanical-surface-highest transition-colors border border-botanical-outline/10 py-3 rounded-xl w-full text-sm font-body disabled:opacity-60">
+                  <button type="button" disabled={!!loading} onClick={() => setLinkStep('input')} className={socialBtnClass}>
                     <Mail className="w-4 h-4" />
-                    Continue with Link
+                    Continue with Magic Link
                   </button>
                 )}
 
@@ -127,18 +141,18 @@ export function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
                         onChange={e => setLinkEmail(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleSendLink()}
                         autoFocus
-                        className="flex-1 bg-botanical-surface-highest/30 border border-botanical-outline/20 rounded-xl px-4 py-3 text-sm text-botanical-on-surface placeholder:text-botanical-outline focus:ring-1 focus:ring-botanical-primary/40 transition-all outline-none"
+                        className="flex-1 bg-white border border-botanical-outline rounded-lg px-4 py-3 text-sm text-botanical-on-surface placeholder:text-botanical-on-surface-variant focus:outline-none focus:border-botanical-secondary focus:ring-2 focus:ring-botanical-secondary/20 transition-all"
                       />
                       <button
                         type="button"
                         disabled={!!loading || !linkEmail.trim()}
                         onClick={handleSendLink}
-                        className="px-4 py-3 bg-botanical-primary/20 hover:bg-botanical-primary/30 border border-botanical-primary/30 rounded-xl text-botanical-primary text-sm font-body transition-colors disabled:opacity-40 flex items-center gap-2"
+                        className="px-5 py-3 bg-botanical-secondary text-white rounded-full text-sm font-semibold transition-all active:scale-95 disabled:opacity-40 flex items-center gap-2 hover:opacity-90"
                       >
                         {loading === 'link' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send'}
                       </button>
                     </div>
-                    <button type="button" onClick={() => { setLinkStep('idle'); setLinkEmail(''); }} className="text-botanical-outline text-xs font-mono uppercase tracking-widest hover:text-botanical-on-surface transition-colors self-center">
+                    <button type="button" onClick={() => { setLinkStep('idle'); setLinkEmail(''); }} className="text-botanical-on-surface-variant text-xs font-semibold uppercase tracking-widest hover:text-botanical-on-surface transition-colors self-center">
                       Cancel
                     </button>
                   </div>
@@ -146,33 +160,31 @@ export function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
 
                 {linkStep === 'sent' && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-2 py-4">
-                    <CheckCircle2 className="w-8 h-8 text-botanical-primary" />
-                    <p className="font-body text-sm text-botanical-on-surface text-center">
-                      Link sent to <span className="text-botanical-primary">{linkEmail}</span>
+                    <CheckCircle2 className="w-8 h-8 text-botanical-secondary" />
+                    <p className="text-sm text-botanical-on-surface text-center">
+                      Link sent to <span className="font-semibold text-botanical-primary">{linkEmail}</span>
                     </p>
-                    <p className="font-mono text-[10px] uppercase tracking-widest text-botanical-outline animate-pulse">Signing you in…</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-botanical-on-surface-variant animate-pulse">Signing you in…</p>
                   </motion.div>
                 )}
               </div>
             </form>
           </motion.div>
 
-          <footer className="mt-12 flex flex-col items-center space-y-4">
-            <a href="#" className="font-serif italic text-botanical-secondary hover:text-botanical-primary transition-colors text-lg underline decoration-botanical-outline/20 underline-offset-4">Forgot password?</a>
-            <div className="flex items-center gap-2 text-botanical-on-surface-variant font-body">
+          {/* Footer links */}
+          <footer className="mt-8 flex flex-col items-center gap-3">
+            <a href="#" className="text-botanical-secondary font-semibold text-sm hover:underline underline-offset-4 decoration-botanical-secondary/40">
+              Forgot password?
+            </a>
+            <div className="flex items-center gap-1.5 text-botanical-on-surface-variant text-sm">
               <span>New here?</span>
-              <a href="#" className="font-serif italic text-botanical-on-surface hover:text-botanical-secondary transition-colors underline underline-offset-4 decoration-botanical-primary/20">Join us</a>
+              <a href="#" className="font-semibold text-botanical-primary hover:underline underline-offset-4 decoration-botanical-primary/40">
+                Join us
+              </a>
             </div>
           </footer>
         </div>
       </main>
-
-      <div className="absolute bottom-12 left-12 hidden lg:block opacity-30 select-none pointer-events-none">
-        <img src={LEAF_DETAIL} alt="" className="w-64 h-80 object-cover rounded-full mix-blend-screen" />
-      </div>
-      <div className="absolute top-24 right-12 hidden lg:block opacity-20 select-none pointer-events-none">
-        <img src={SUCCULENT_MACRO} alt="" className="w-48 h-48 object-cover rounded-full mix-blend-screen transform rotate-12" />
-      </div>
     </div>
   );
 }

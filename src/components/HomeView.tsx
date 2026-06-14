@@ -1,6 +1,6 @@
 import { Settings, Droplets, Sun, Scissors, Check, Trophy, Waves, Leaf, Lock, Plus } from 'lucide-react';
 import type { AuthUser, Quest, Badge } from '../types';
-import { USER_AVATAR } from '../constants';
+import { RootedLogo } from './RootedLogo';
 
 export function HomeView({
   user,
@@ -23,44 +23,54 @@ export function HomeView({
   ];
 
   return (
-    <div className="relative z-10 p-6 pt-24 pb-32 max-w-4xl mx-auto">
-      <header className="fixed top-0 left-0 w-full z-50 bg-botanical-bg/70 backdrop-blur-xl flex justify-between items-center px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full border border-botanical-secondary/30 flex items-center justify-center bg-botanical-surface overflow-hidden shadow-lg shadow-botanical-primary/10">
-            <img src={user?.avatar ?? USER_AVATAR} alt="Profile" className="w-full h-full object-cover" />
-          </div>
-          <span className="text-2xl font-serif text-botanical-primary italic">Obsidian Grove</span>
+    <div className="relative z-10 p-6 pt-24 pb-36 max-w-2xl mx-auto">
+      {/* ── Top nav: white bar with Starbucks triple shadow ── */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_2px_2px_rgba(0,0,0,0.06),0_0_2px_rgba(0,0,0,0.07)] flex justify-between items-center px-6 py-4">
+        <div className="flex items-center gap-2.5">
+          <RootedLogo size={36} />
+          <span className="text-xl font-bold text-botanical-primary tracking-tight">Rooted</span>
         </div>
-        <button onClick={onOpenProfile} className="text-botanical-primary hover:opacity-80 transition-opacity" title="Profile">
-          <Settings className="w-6 h-6" />
+        <button
+          onClick={onOpenProfile}
+          className="text-botanical-on-surface-variant hover:text-botanical-primary transition-colors"
+          title="Profile"
+        >
+          <Settings className="w-5 h-5" />
         </button>
       </header>
 
-      <section className="mt-8 space-y-4">
-        <h1 className="font-serif text-5xl text-botanical-primary leading-tight">Good morning,<br />Botanist.</h1>
-        <p className="text-botanical-on-surface-variant text-lg font-body">Your greenhouse is thriving. Let's tend to it.</p>
+      {/* ── Hero ── */}
+      <section className="mt-6 space-y-2">
+        <h1 className="font-sans font-semibold text-5xl text-botanical-primary leading-tight tracking-tight">
+          Good morning,<br />Botanist.
+        </h1>
+        <p className="text-botanical-on-surface-variant text-base">Your greenhouse is thriving. Let's tend to it.</p>
       </section>
 
-      <section className="mt-12">
-        <div className="flex items-baseline justify-between mb-6">
-          <h2 className="font-serif text-3xl font-bold tracking-tight text-botanical-primary">Daily Quests</h2>
-          <span className="font-mono text-botanical-secondary text-xs uppercase tracking-widest">{quests.length} To Do</span>
+      {/* ── Daily Quests ── */}
+      <section className="mt-10">
+        <div className="flex items-baseline justify-between mb-5">
+          <h2 className="font-sans font-semibold text-2xl text-botanical-on-surface tracking-tight">Daily Quests</h2>
+          <span className="text-botanical-on-surface-variant text-xs font-semibold uppercase tracking-widest">{quests.length} To Do</span>
         </div>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 gap-3">
           {quests.map(quest => (
-            <div key={quest.id} className="glass-card rounded-2xl p-5 flex items-center justify-between group transition-all hover:bg-botanical-surface-highest/40">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-xl bg-botanical-surface-high flex items-center justify-center text-botanical-primary group-hover:scale-110 transition-transform">
-                  {quest.icon === 'water' && <Droplets className="w-7 h-7" />}
-                  {quest.icon === 'sun' && <Sun className="w-7 h-7" />}
-                  {quest.icon === 'cut' && <Scissors className="w-7 h-7" />}
+            <div
+              key={quest.id}
+              className="glass-card rounded-xl p-5 flex items-center justify-between hover:shadow-[0_0_0.5px_rgba(0,0,0,0.14),0_4px_8px_rgba(0,0,0,0.08)] transition-shadow"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-11 h-11 rounded-full bg-botanical-secondary/10 flex items-center justify-center text-botanical-secondary flex-shrink-0">
+                  {quest.icon === 'water' && <Droplets className="w-6 h-6" />}
+                  {quest.icon === 'sun' && <Sun className="w-6 h-6" />}
+                  {quest.icon === 'cut' && <Scissors className="w-6 h-6" />}
                 </div>
                 <div>
-                  <h3 className="font-body font-semibold text-botanical-on-surface">{quest.title}</h3>
-                  <p className="text-botanical-on-surface-variant text-sm">{quest.description}</p>
+                  <h3 className="font-semibold text-botanical-on-surface text-sm">{quest.title}</h3>
+                  <p className="text-botanical-on-surface-variant text-xs mt-0.5">{quest.description}</p>
                 </div>
               </div>
-              <button className="w-8 h-8 rounded-full border border-botanical-primary/40 flex items-center justify-center text-botanical-primary hover:bg-botanical-primary hover:text-botanical-bg transition-colors">
+              <button className="w-8 h-8 rounded-full bg-botanical-light-green flex items-center justify-center text-botanical-secondary hover:bg-botanical-secondary hover:text-white active:scale-95 transition-all flex-shrink-0">
                 <Check className="w-4 h-4" />
               </button>
             </div>
@@ -68,37 +78,65 @@ export function HomeView({
         </div>
       </section>
 
-      <section className="mt-12 space-y-6">
-        <div className="flex justify-between items-end">
-          <h2 className="font-serif text-2xl font-bold text-botanical-on-surface">Badges</h2>
-          <button className="bg-botanical-surface-high text-botanical-primary px-4 py-2 rounded-xl font-bold text-xs tracking-widest hover:bg-botanical-surface transition-colors flex items-center gap-2">
-            <Plus className="w-3 h-3" /> MORE
-          </button>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {badges.map(badge => (
-            <div
-              key={badge.id}
-              className={`glass-card rounded-3xl p-6 flex flex-col justify-between aspect-square relative overflow-hidden ${badge.type === 'featured' ? 'bg-gradient-to-br from-botanical-surface-highest/50 to-botanical-primary-container/20' : 'opacity-80'}`}
-            >
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-botanical-primary-container/20 blur-[50px]" />
-              <div className="space-y-4 relative z-10">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-inner ${badge.type === 'featured' ? 'bg-botanical-primary/20 text-botanical-primary' : 'bg-botanical-surface-high text-botanical-outline'}`}>
-                  {badge.icon === 'trophy' && <Trophy className="w-6 h-6" />}
-                  {badge.icon === 'waves' && <Waves className="w-6 h-6" />}
-                  {badge.icon === 'leaf' && <Leaf className="w-6 h-6" />}
-                  {badge.icon === 'lock' && <Lock className="w-6 h-6" />}
-                </div>
-                <div>
-                  <h4 className="font-serif text-lg text-botanical-primary">{badge.title}</h4>
-                  <p className="text-botanical-on-surface-variant text-[10px] leading-relaxed">{badge.description}</p>
-                </div>
-              </div>
-              <div className="mt-4 font-mono text-[9px] text-botanical-secondary tracking-widest uppercase relative z-10">
-                {badge.earned ? 'Earned' : 'Locked'}
-              </div>
+      {/* ── Badges — House Green feature band ── */}
+      <section className="mt-10">
+        <div className="bg-botanical-primary-container rounded-2xl overflow-hidden">
+          <div className="px-6 py-7">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-semibold text-2xl text-white tracking-tight">Badges</h2>
+              <button className="bg-botanical-secondary text-white px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all">
+                <Plus className="w-3 h-3" /> More
+              </button>
             </div>
-          ))}
+            <div className="grid grid-cols-2 gap-3">
+              {badges.map(badge => (
+                <div
+                  key={badge.id}
+                  className={`rounded-xl p-5 flex flex-col min-h-[150px] ${
+                    badge.type === 'featured'
+                      ? 'border border-botanical-gold/50 bg-white/5'
+                      : badge.earned
+                      ? 'bg-white/5'
+                      : 'bg-white/[0.03]'
+                  }`}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      badge.type === 'featured'
+                        ? 'bg-botanical-gold/20 text-botanical-gold'
+                        : badge.earned
+                        ? 'bg-white/15 text-white/80'
+                        : 'bg-white/5 text-white/20'
+                    }`}
+                  >
+                    {badge.icon === 'trophy' && <Trophy className="w-5 h-5" />}
+                    {badge.icon === 'waves' && <Waves className="w-5 h-5" />}
+                    {badge.icon === 'leaf' && <Leaf className="w-5 h-5" />}
+                    {badge.icon === 'lock' && <Lock className="w-5 h-5" />}
+                  </div>
+                  <div className="mt-3 flex-1">
+                    <h4
+                      className={`font-semibold text-sm leading-snug ${
+                        badge.type === 'featured'
+                          ? 'text-botanical-gold'
+                          : badge.earned
+                          ? 'text-white'
+                          : 'text-white/25'
+                      }`}
+                    >
+                      {badge.title}
+                    </h4>
+                    <p className={`text-[11px] mt-1 leading-relaxed ${badge.earned ? 'text-white/50' : 'text-white/20'}`}>
+                      {badge.description}
+                    </p>
+                  </div>
+                  <div className={`mt-3 text-[10px] font-semibold uppercase tracking-widest ${badge.earned ? 'text-botanical-secondary' : 'text-white/20'}`}>
+                    {badge.earned ? 'Earned' : 'Locked'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
     </div>

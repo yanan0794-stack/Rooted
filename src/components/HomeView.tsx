@@ -1,6 +1,40 @@
-import { Settings, Droplets, Sun, Scissors, Check, Trophy, Waves, Leaf, Lock, Plus } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Settings,
+  Droplets,
+  Sun,
+  Scissors,
+  Check,
+  Trophy,
+  Waves,
+  Leaf,
+  Lock,
+  Plus,
+  Minus,
+  Flame,
+  Scan,
+  ShieldCheck,
+  type LucideIcon,
+} from 'lucide-react';
 import type { AuthUser, Quest, Badge } from '../types';
+import { ACHIEVEMENT_BADGES } from '../constants';
 import { RootedLogo } from './RootedLogo';
+
+const badgeIcons: Record<Badge['icon'], LucideIcon> = {
+  trophy: Trophy,
+  waves: Waves,
+  leaf: Leaf,
+  lock: Lock,
+  sun: Sun,
+  flame: Flame,
+  scan: Scan,
+  scissors: Scissors,
+  shield: ShieldCheck,
+};
+
+function getBadgeProgress(badge: Badge) {
+  return Math.min(100, Math.round((badge.progress / Math.max(badge.goal, 1)) * 100));
+}
 
 export function HomeView({
   user,
@@ -9,18 +43,17 @@ export function HomeView({
   user: AuthUser | null;
   onOpenProfile: () => void;
 }) {
+  const [showAllBadges, setShowAllBadges] = useState(false);
+
   const quests: Quest[] = [
     { id: '1', title: 'Watering', description: 'Hydrate the Monstera', icon: 'water', color: 'primary', completed: false },
     { id: '2', title: 'Find Sunlight', description: 'Move the Succulents', icon: 'sun', color: 'secondary', completed: false },
     { id: '3', title: 'Tidy Up', description: 'Prune the Ficus', icon: 'cut', color: 'primary', completed: false },
   ];
 
-  const badges: Badge[] = [
-    { id: '1', title: 'Top Gardener', description: 'You cared for plants for 30 days straight!', icon: 'trophy', earned: true, type: 'featured' },
-    { id: '2', title: 'Water Expert', description: 'Proper hydration levels maintained.', icon: 'waves', earned: true, type: 'standard' },
-    { id: '3', title: 'Seedling', description: 'Just starting the journey.', icon: 'leaf', earned: true, type: 'standard' },
-    { id: '4', title: 'Locked', description: 'Keep growing to unlock.', icon: 'lock', earned: false, type: 'locked' },
-  ];
+  const badges = showAllBadges ? ACHIEVEMENT_BADGES : ACHIEVEMENT_BADGES.slice(0, 4);
+  const earnedBadgeCount = ACHIEVEMENT_BADGES.filter(badge => badge.earned).length;
+  const activeBadgeCount = ACHIEVEMENT_BADGES.filter(badge => !badge.earned && badge.progress > 0).length;
 
   return (
     <div className="relative z-10 p-6 pt-24 pb-36 max-w-2xl mx-auto">
@@ -84,57 +117,123 @@ export function HomeView({
           <div className="px-6 py-7">
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-semibold text-2xl text-white tracking-tight">Badges</h2>
-              <button className="bg-botanical-secondary text-white px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all">
-                <Plus className="w-3 h-3" /> More
+              <button
+                onClick={() => setShowAllBadges(current => !current)}
+                className="bg-botanical-secondary text-white px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all"
+                aria-expanded={showAllBadges}
+                aria-label={showAllBadges ? 'Show fewer badges' : 'Show all badges'}
+              >
+                {showAllBadges ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                {showAllBadges ? 'Less' : 'More'}
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {badges.map(badge => (
-                <div
-                  key={badge.id}
-                  className={`rounded-xl p-5 flex flex-col min-h-[150px] ${
-                    badge.type === 'featured'
-                      ? 'border border-botanical-gold/50 bg-white/5'
-                      : badge.earned
-                      ? 'bg-white/5'
-                      : 'bg-white/[0.03]'
-                  }`}
-                >
+            {showAllBadges && (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-xl bg-white/10 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Earned</p>
+                  <p className="text-xl font-bold text-white mt-0.5">{earnedBadgeCount}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Active</p>
+                  <p className="text-xl font-bold text-white mt-0.5">{activeBadgeCount}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Total</p>
+                  <p className="text-xl font-bold text-white mt-0.5">{ACHIEVEMENT_BADGES.length}</p>
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {badges.map(badge => {
+                const BadgeIcon = badgeIcons[badge.icon];
+                const progress = getBadgeProgress(badge);
+                const isLocked = badge.type === 'locked';
+                const statusLabel = badge.earned ? 'Earned' : isLocked ? 'Locked' : 'In Progress';
+
+                return (
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    key={badge.id}
+                    className={`rounded-xl p-5 flex flex-col min-h-[176px] transition-all ${
                       badge.type === 'featured'
-                        ? 'bg-botanical-gold/20 text-botanical-gold'
-                        : badge.earned
-                        ? 'bg-white/15 text-white/80'
-                        : 'bg-white/5 text-white/20'
+                        ? 'border border-botanical-gold/50 bg-white/5'
+                        : isLocked
+                        ? 'bg-white/[0.03]'
+                        : 'bg-white/5'
                     }`}
                   >
-                    {badge.icon === 'trophy' && <Trophy className="w-5 h-5" />}
-                    {badge.icon === 'waves' && <Waves className="w-5 h-5" />}
-                    {badge.icon === 'leaf' && <Leaf className="w-5 h-5" />}
-                    {badge.icon === 'lock' && <Lock className="w-5 h-5" />}
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          badge.type === 'featured'
+                            ? 'bg-botanical-gold/20 text-botanical-gold'
+                            : badge.earned
+                            ? 'bg-white/15 text-white/85'
+                            : isLocked
+                            ? 'bg-white/5 text-white/25'
+                            : 'bg-botanical-secondary/20 text-white'
+                        }`}
+                      >
+                        <BadgeIcon className="w-5 h-5" />
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${
+                          badge.type === 'featured'
+                            ? 'bg-botanical-gold/15 text-botanical-gold'
+                            : badge.earned
+                            ? 'bg-white/10 text-white/70'
+                            : isLocked
+                            ? 'bg-white/5 text-white/25'
+                            : 'bg-botanical-secondary/20 text-botanical-light-green'
+                        }`}
+                      >
+                        {badge.level}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex-1">
+                      <h4
+                        className={`font-semibold text-sm leading-snug ${
+                          badge.type === 'featured'
+                            ? 'text-botanical-gold'
+                            : isLocked
+                            ? 'text-white/30'
+                            : 'text-white'
+                        }`}
+                      >
+                        {badge.title}
+                      </h4>
+                      <p className={`text-[11px] mt-1 leading-relaxed ${isLocked ? 'text-white/22' : 'text-white/55'}`}>
+                        {badge.description}
+                      </p>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-start justify-between gap-2 text-[10px] font-semibold uppercase tracking-widest">
+                        <span
+                          className={
+                            badge.earned
+                              ? 'text-botanical-secondary'
+                              : isLocked
+                              ? 'text-white/25'
+                              : 'text-botanical-light-green'
+                          }
+                        >
+                          {statusLabel}
+                        </span>
+                        <span className={`${isLocked ? 'text-white/25' : 'text-white/50'} max-w-[58%] text-right normal-case tracking-normal leading-snug`}>
+                          {badge.result}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            badge.type === 'featured' ? 'bg-botanical-gold' : isLocked ? 'bg-white/20' : 'bg-botanical-secondary'
+                          }`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-3 flex-1">
-                    <h4
-                      className={`font-semibold text-sm leading-snug ${
-                        badge.type === 'featured'
-                          ? 'text-botanical-gold'
-                          : badge.earned
-                          ? 'text-white'
-                          : 'text-white/25'
-                      }`}
-                    >
-                      {badge.title}
-                    </h4>
-                    <p className={`text-[11px] mt-1 leading-relaxed ${badge.earned ? 'text-white/50' : 'text-white/20'}`}>
-                      {badge.description}
-                    </p>
-                  </div>
-                  <div className={`mt-3 text-[10px] font-semibold uppercase tracking-widest ${badge.earned ? 'text-botanical-secondary' : 'text-white/20'}`}>
-                    {badge.earned ? 'Earned' : 'Locked'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

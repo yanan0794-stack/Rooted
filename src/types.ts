@@ -1,4 +1,4 @@
-export type View = 'LOGIN' | 'HOME' | 'SCAN' | 'PROFILE';
+export type View = 'LOGIN' | 'HOME' | 'SCAN' | 'LIBRARY' | 'PROFILE';
 
 export interface AuthUser {
   id: string;
@@ -17,13 +17,19 @@ export interface Quest {
   completed: boolean;
 }
 
+export type BadgeIcon = 'trophy' | 'waves' | 'leaf' | 'lock' | 'sun' | 'flame' | 'scan' | 'scissors' | 'shield';
+
 export interface Badge {
   id: string;
   title: string;
   description: string;
-  icon: string;
+  icon: BadgeIcon;
   earned: boolean;
   type: 'featured' | 'standard' | 'locked';
+  level: string;
+  progress: number;
+  goal: number;
+  result: string;
 }
 
 export type CareTask = {

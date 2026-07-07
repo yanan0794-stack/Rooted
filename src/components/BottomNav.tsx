@@ -30,7 +30,12 @@ export function BottomNav({
         <span className="text-[10px] font-semibold uppercase tracking-wider">Scan</span>
       </button>
 
-      <button className="flex flex-col items-center gap-1 text-botanical-outline hover:text-botanical-on-surface-variant transition-colors">
+      <button
+        onClick={() => onViewChange('LIBRARY')}
+        className={`flex flex-col items-center gap-1 transition-colors ${
+          activeView === 'LIBRARY' ? 'text-botanical-secondary' : 'text-botanical-outline hover:text-botanical-on-surface-variant'
+        }`}
+      >
         <Library className="w-6 h-6" />
         <span className="text-[10px] font-semibold uppercase tracking-wider">Library</span>
       </button>

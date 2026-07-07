@@ -10,6 +10,7 @@ const _require = createRequire(import.meta.url);
 
 // ── SQLite: initialised once at Vite startup ──────────────────
 const DATA_DIR = path.resolve(__dirname, 'data');
+const DEFAULT_QIANFAN_MODEL = 'qwen3-vl-235b-a22b-instruct';
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const BetterSqlite = _require('better-sqlite3');
@@ -66,6 +67,34 @@ function cosKeyFromUrl(url: string) {
   return url.replace(/^https?:\/\/[^/]+\//, '');
 }
 
+function folderForUser(user: { name?: string } | null) {
+  return user?.name
+    ? user.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+    : 'guest';
+}
+
+function toProjectRelativePath(absPath: string) {
+  return path.relative(__dirname, absPath).split(path.sep).join('/');
+}
+
+function mimeForPath(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return 'image/jpeg';
+}
+
+function localImageSrc(imageUrl: string) {
+  if (!imageUrl || /^(https?:|data:)/.test(imageUrl)) return imageUrl;
+
+  const absPath = path.resolve(__dirname, imageUrl);
+  if (!absPath.startsWith(DATA_DIR) || !fs.existsSync(absPath)) return '';
+
+  const encoded = fs.readFileSync(absPath).toString('base64');
+  return `data:${mimeForPath(absPath)};base64,${encoded}`;
+}
+
 function readBody(req: any): Promise<string> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
@@ -78,6 +107,17 @@ function jsonError(res: any, status: number, message: string) {
   if (!res.headersSent) {
     res.statusCode = status;
     res.end(JSON.stringify({ error: message }));
+  }
+}
+
+function aiErrorMessage(status: number, model: string, body: string) {
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string } };
+    const code = parsed.error?.code ? `${parsed.error.code}: ` : '';
+    const message = parsed.error?.message ?? body;
+    return `AI API ${status} for model "${model}": ${code}${message}`;
+  } catch {
+    return `AI API ${status} for model "${model}": ${body}`;
   }
 }
 
@@ -133,9 +173,7 @@ function uploadApiPlugin(secretId: string, secretKey: string, bucket: string, re
           const { filename, data } = JSON.parse(await readBody(req)) as { filename: string; data: string };
 
           const user = stmt.getSessionUser.get() as { name?: string } | null;
-          const folder = user?.name
-            ? user.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
-            : 'guest';
+          const folder = folderForUser(user);
 
           const ext  = path.extname(filename) || '.jpg';
           const buf  = Buffer.from(data.replace(/^data:[^;]+;base64,/, ''), 'base64');
@@ -167,10 +205,74 @@ function uploadApiPlugin(secretId: string, secretKey: string, bucket: string, re
   };
 }
 
+// ── Plugin: /api/library  (local saved scan guides) ───────────
+function libraryApiPlugin() {
+  return {
+    name: 'library-api',
+    configureServer(server: any) {
+      server.middlewares.use('/api/library', async (req: any, res: any) => {
+        res.setHeader('Content-Type', 'application/json');
+        try {
+          if (req.method !== 'GET') { jsonError(res, 405, 'Method not allowed'); return; }
+
+          const user = stmt.getSessionUser.get() as { name?: string } | null;
+          const folder = folderForUser(user);
+          const libraryDir = path.join(DATA_DIR, 'images', folder);
+
+          if (!fs.existsSync(libraryDir)) {
+            res.end(JSON.stringify({ plants: [] }));
+            return;
+          }
+
+          const plants = fs.readdirSync(libraryDir)
+            .filter(file => file.endsWith('.json'))
+            .map(file => {
+              try {
+                const absJsonPath = path.join(libraryDir, file);
+                const parsed = JSON.parse(fs.readFileSync(absJsonPath, 'utf8'));
+
+                return {
+                  ...parsed,
+                  jsonPath: parsed.jsonPath ?? toProjectRelativePath(absJsonPath),
+                  imageSrc: localImageSrc(parsed.imageUrl ?? ''),
+                  quickFacts: parsed.quickFacts ?? { difficulty: '', light: '', water: '', humidity: '' },
+                  taskGroups: Array.isArray(parsed.taskGroups)
+                    ? parsed.taskGroups.map((group: any) => ({
+                        category: group.category ?? 'Care',
+                        tasks: Array.isArray(group.tasks)
+                          ? group.tasks.map((task: any, index: number) => ({
+                              id: task.id ?? `${group.category ?? 'care'}-${index}`,
+                              title: task.title ?? 'Care task',
+                              detail: task.detail ?? '',
+                              frequency: task.frequency ?? '',
+                              done: Boolean(task.done),
+                            }))
+                          : [],
+                      }))
+                    : [],
+                  tips: Array.isArray(parsed.tips) ? parsed.tips : [],
+                };
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean)
+            .sort((a: any, b: any) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+
+          res.end(JSON.stringify({ plants }));
+        } catch (err) {
+          jsonError(res, 500, String(err));
+        }
+      });
+    },
+  };
+}
+
 // ── Plugin: /api/identify  (AI inference + COS JSON storage) ──
 function identifyApiPlugin(
   apiKey: string,
   appId: string,
+  aiModel: string,
   secretId: string,
   secretKey: string,
   bucket: string,
@@ -205,8 +307,7 @@ function identifyApiPlugin(
               'appid': appId,
             },
             body: JSON.stringify({
-              model: 'qwen3-vl-235b-a22b-thinking',
-              enable_thinking: false,
+              model: aiModel,
               messages: [
                 {
                   role: 'system',
@@ -229,7 +330,7 @@ function identifyApiPlugin(
           });
 
           if (!aiRes.ok) {
-            jsonError(res, 502, `AI API ${aiRes.status}: ${await aiRes.text()}`); return;
+            jsonError(res, 502, aiErrorMessage(aiRes.status, aiModel, await aiRes.text())); return;
           }
 
           const completion = (await aiRes.json()) as { choices: { message: { content: string } }[] };
@@ -278,6 +379,7 @@ function identifyApiPlugin(
 // ── Vite config ───────────────────────────────────────────────
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  const aiModel = env.QIANFAN_MODEL || env.AI_MODEL || DEFAULT_QIANFAN_MODEL;
 
   const cos = {
     secretId:  env.COS_SECRET_ID  ?? '',
@@ -293,7 +395,8 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       userApiPlugin(),
       uploadApiPlugin(cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain),
-      identifyApiPlugin(env.API_KEY, env.APP_ID, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain),
+      libraryApiPlugin(),
+      identifyApiPlugin(env.API_KEY, env.APP_ID, aiModel, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain),
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

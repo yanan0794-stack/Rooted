@@ -10,6 +10,7 @@ import { getStoredUser, persistUser, removeUser } from './auth';
 import { LoginView } from './components/LoginView';
 import { HomeView } from './components/HomeView';
 import { ScannerView } from './components/Scanner';
+import { LibraryView } from './components/LibraryView';
 import { ProfileView } from './components/ProfileView';
 import { BottomNav } from './components/BottomNav';
 import { GrowingGuidePanel } from './components/GrowingGuidePanel';
@@ -54,6 +55,11 @@ export default function App() {
         {currentView === 'SCAN' && (
           <motion.div key="scan" initial={{ opacity: 0, scale: 1.1 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="w-full">
             <ScannerView onBack={() => setCurrentView('HOME')} />
+          </motion.div>
+        )}
+        {currentView === 'LIBRARY' && (
+          <motion.div key="library" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }} className="w-full">
+            <LibraryView onOpenScanner={() => setCurrentView('SCAN')} />
           </motion.div>
         )}
       </AnimatePresence>

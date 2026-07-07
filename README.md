@@ -15,6 +15,6 @@ View your app in AI Studio: https://ai.studio/apps/5c7be975-0be1-420c-b06a-f826e
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set `API_KEY` and `APP_ID` in [.env.local](.env.local) to your Qianfan credentials. Optionally set `QIANFAN_MODEL`; the default is `qwen3-vl-235b-a22b-instruct`.
 3. Run the app:
    `npm run dev`

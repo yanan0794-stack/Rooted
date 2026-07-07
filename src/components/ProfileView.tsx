@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { Sprout, Trophy, Star, Clapperboard, Bell, Shield, HelpCircle, ChevronRight, LogOut } from 'lucide-react';
 import type { AuthUser } from '../types';
-import { USER_AVATAR } from '../constants';
+import { ACHIEVEMENT_BADGES, USER_AVATAR } from '../constants';
 
 const PROVIDER_LABEL: Record<AuthUser['provider'], string> = {
   google: 'Google',
@@ -20,9 +20,10 @@ export function ProfileView({
   onLogout: () => void;
   onOpenGuide: () => void;
 }) {
+  const earnedBadges = ACHIEVEMENT_BADGES.filter(badge => badge.earned).length;
   const stats = [
     { label: 'Plants', value: '7', icon: <Sprout className="w-5 h-5" /> },
-    { label: 'Badges', value: '3', icon: <Trophy className="w-5 h-5" /> },
+    { label: 'Badges', value: String(earnedBadges), icon: <Trophy className="w-5 h-5" /> },
     { label: 'Streak', value: '30', icon: <Star className="w-5 h-5" /> },
   ];
 

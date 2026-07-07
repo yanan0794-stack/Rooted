@@ -140,6 +140,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
   const [camState, setCamState] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
   const [phase, setPhase] = useState<'idle' | 'saving' | 'analyzing' | 'done' | 'error'>('idle');
   const [result, setResult] = useState<PlantResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -173,6 +174,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
   }, []);
 
   const handleImageData = async (data: string, filename: string) => {
+    setErrorMessage('');
     setPhase('saving');
     let filePath = '';
     try {
@@ -183,7 +185,8 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
       });
       if (!res.ok) throw new Error('Upload failed');
       filePath = (await res.json()).path;
-    } catch {
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Upload failed');
       setPhase('error');
       setTimeout(() => setPhase('idle'), 2500);
       return;
@@ -197,7 +200,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
         body: JSON.stringify({ imageData: data, imagePath: filePath }),
       });
       if (!res.ok) {
-        const { error } = await res.json();
+        const { error } = await res.json().catch(() => ({ error: 'Plant identification failed' }));
         throw new Error(error);
       }
       const json = await res.json();
@@ -227,8 +230,9 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
       setPhase('done');
     } catch (err) {
       console.error('Plant ID failed:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'Plant identification failed');
       setPhase('error');
-      setTimeout(() => setPhase('idle'), 2500);
+      setTimeout(() => setPhase('idle'), 5000);
     }
   };
 
@@ -238,7 +242,10 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    const context = canvas.getContext('2d');
+    context?.translate(canvas.width, 0);
+    context?.scale(-1, 1);
+    context?.drawImage(video, 0, 0);
     handleImageData(canvas.toDataURL('image/jpeg', 0.9), `plant_${Date.now()}.jpg`);
   };
 
@@ -295,7 +302,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
           playsInline
           muted
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-          className={`w-full h-full object-cover transition-opacity duration-500 ${camState === 'active' ? 'opacity-100' : 'opacity-0'}`}
+          className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-500 ${camState === 'active' ? 'opacity-100' : 'opacity-0'}`}
         />
 
         {camState === 'loading' && (
@@ -363,14 +370,19 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
                   </div>
                   <div className="text-center space-y-1">
                     <p className="font-mono text-[10px] uppercase tracking-widest text-white">Identifying plant</p>
-                    <p className="font-mono text-[9px] text-white/40 uppercase tracking-widest">Powered by DeepSeek</p>
+                    <p className="font-mono text-[9px] text-white/40 uppercase tracking-widest">Powered by Qianfan Vision</p>
                   </div>
                 </>
               )}
               {phase === 'error' && (
                 <>
                   <X className="w-10 h-10 text-red-400" />
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-red-300">Something went wrong</p>
+                  <div className="max-w-xs px-4 text-center space-y-2">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-red-300">Something went wrong</p>
+                    {errorMessage && (
+                      <p className="font-body text-xs leading-relaxed text-white/60 break-words">{errorMessage}</p>
+                    )}
+                  </div>
                 </>
               )}
             </motion.div>

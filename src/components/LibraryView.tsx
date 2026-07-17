@@ -144,6 +144,20 @@ export function LibraryView({ onOpenScanner }: { onOpenScanner: () => void }) {
                 {expanded && (
                   <div className="border-t border-botanical-outline/10 px-4 pb-5 pt-4">
                     <p className="text-sm leading-relaxed text-botanical-on-surface-variant">{plant.description}</p>
+                    {((plant.visualEvidence?.length ?? 0) > 0 || plant.diagnosticNotes) && (
+                      <div className="mt-4 rounded-xl bg-botanical-surface px-3 py-3">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-botanical-secondary">Identification check</p>
+                        {plant.visualEvidence?.slice(0, 3).map(item => (
+                          <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-botanical-on-surface-variant">
+                            <Leaf className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-botanical-secondary" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                        {plant.diagnosticNotes && (
+                          <p className="mt-2 text-xs leading-relaxed text-botanical-on-surface-variant">{plant.diagnosticNotes}</p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <QuickFact icon={<Zap className="h-3 w-3" />} label="Difficulty" value={plant.quickFacts.difficulty} />

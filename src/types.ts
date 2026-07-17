@@ -45,6 +45,18 @@ export type TaskGroup = {
   tasks: CareTask[];
 };
 
+export type VideoGuideScene = {
+  title: string;
+  caption: string;
+  detail: string;
+  duration: number;
+};
+
+export type VideoGuide = {
+  title: string;
+  scenes: VideoGuideScene[];
+};
+
 export type PlantResult = {
   id: string;
   scannedAt: string;
@@ -54,6 +66,10 @@ export type PlantResult = {
   imageUrl: string;
   imageSrc: string;
   jsonPath: string;
+  confidence: number;
+  alternatives: string[];
+  visualEvidence?: string[];
+  diagnosticNotes?: string;
   quickFacts: {
     difficulty: string;
     light: string;
@@ -62,4 +78,5 @@ export type PlantResult = {
   };
   taskGroups: TaskGroup[];
   tips: string[];
+  videoGuide: VideoGuide;
 };

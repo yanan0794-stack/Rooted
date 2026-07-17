@@ -376,6 +376,12 @@ function identifyApiPlugin(
   };
 }
 
+// Register the /api/* middlewares on the preview server too, so `npm start`
+// (vite preview) serves the same backend as the dev server.
+function withPreview(plugin: any) {
+  return { ...plugin, configurePreviewServer: plugin.configureServer };
+}
+
 // ── Vite config ───────────────────────────────────────────────
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -393,10 +399,10 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      userApiPlugin(),
-      uploadApiPlugin(cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain),
-      libraryApiPlugin(),
-      identifyApiPlugin(env.API_KEY, env.APP_ID, aiModel, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain),
+      withPreview(userApiPlugin()),
+      withPreview(uploadApiPlugin(cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain)),
+      withPreview(libraryApiPlugin()),
+      withPreview(identifyApiPlugin(env.API_KEY, env.APP_ID, aiModel, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain)),
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
@@ -408,6 +414,11 @@ export default defineConfig(({ mode }) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify — file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+    },
+    preview: {
+      // Public domain this app is served from via `vite preview` (npm start).
+      // Leading dot allows the apex domain and all subdomains (e.g. www).
+      allowedHosts: ['.rootedhelper.com'],
     },
   };
 });

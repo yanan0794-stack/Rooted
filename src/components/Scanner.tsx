@@ -1,8 +1,53 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Loader2, Shield, Camera, Bolt, Leaf, Check, Sun, Droplets, Wind, Zap } from 'lucide-react';
-import type { PlantResult } from '../types';
+import { X, Loader2, Shield, Camera, Bolt, Leaf, Check, Sun, Droplets, Wind, Zap, Play, Pause, Clapperboard, BadgeCheck, Volume2 } from 'lucide-react';
+import type { PlantResult, VideoGuideScene } from '../types';
 import { SUCCULENT_MACRO } from '../constants';
+
+const MAX_SCAN_EDGE = 1440;
+const SCAN_JPEG_QUALITY = 0.82;
+
+function fitDimensions(width: number, height: number, maxEdge = MAX_SCAN_EDGE) {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+async function resizeImageData(data: string) {
+  return new Promise<string>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const size = fitDimensions(image.naturalWidth, image.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = size.width;
+      canvas.height = size.height;
+      const context = canvas.getContext('2d', { alpha: false });
+      if (!context) {
+        resolve(data);
+        return;
+      }
+
+      context.drawImage(image, 0, 0, size.width, size.height);
+      resolve(canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
+    };
+    image.onerror = () => resolve(data);
+    image.src = data;
+  });
+}
+
+function captureVideoFrame(video: HTMLVideoElement) {
+  const size = fitDimensions(video.videoWidth, video.videoHeight);
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const context = canvas.getContext('2d', { alpha: false });
+  context?.translate(canvas.width, 0);
+  context?.scale(-1, 1);
+  context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY);
+}
 
 function QuickFactCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
@@ -12,6 +57,381 @@ function QuickFactCard({ icon, label, value }: { icon: React.ReactNode; label: s
         <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline">{label}</p>
       </div>
       <p className="font-body text-xs text-botanical-on-surface font-medium">{value || '—'}</p>
+    </div>
+  );
+}
+
+function fallbackVideoScenes(result: PlantResult): VideoGuideScene[] {
+  const lightTask = result.taskGroups.find(group => group.category === 'Light')?.tasks[0];
+  const waterTask = result.taskGroups.find(group => group.category === 'Watering')?.tasks[0];
+  const careTask = result.taskGroups.find(group => group.tasks.length > 0)?.tasks[0];
+
+  return [
+    {
+      title: `Meet ${result.plant}`,
+      caption: result.description,
+      detail: result.scientificName,
+      duration: 7,
+    },
+    {
+      title: 'Light',
+      caption: result.quickFacts.light || 'Place it where the light matches its natural habit.',
+      detail: lightTask?.detail ?? '',
+      duration: 6,
+    },
+    {
+      title: 'Water',
+      caption: result.quickFacts.water || 'Check the soil before watering.',
+      detail: waterTask?.detail ?? '',
+      duration: 6,
+    },
+    {
+      title: 'Care Rhythm',
+      caption: result.tips[0] || careTask?.detail || 'Keep care steady and adjust with the season.',
+      detail: careTask?.frequency ?? '',
+      duration: 6,
+    },
+  ].filter(scene => scene.caption);
+}
+
+function formatVideoTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, '0')}`;
+}
+
+function AiVideoGuide({ result }: { result: PlantResult }) {
+  const scenes = useMemo(() => {
+    const guideScenes = result.videoGuide?.scenes?.filter(scene => scene.title && scene.caption) ?? [];
+    return guideScenes.length ? guideScenes : fallbackVideoScenes(result);
+  }, [result]);
+  const totalDuration = useMemo(() => scenes.reduce((sum, scene) => sum + (scene.duration || 6), 0), [scenes]);
+  const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [voiceMode, setVoiceMode] = useState<'idle' | 'loading' | 'elevenlabs' | 'browser' | 'setup'>('idle');
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const elevenLabsEnabledRef = useRef<boolean | null>(null);
+  const lastSpokenIndexRef = useRef(-1);
+  const playbackTokenRef = useRef(0);
+
+  useEffect(() => {
+    setElapsed(0);
+    setPlaying(false);
+    setVoiceMode('idle');
+    elevenLabsEnabledRef.current = null;
+    playbackTokenRef.current += 1;
+    lastSpokenIndexRef.current = -1;
+    try { audioSourceRef.current?.stop(); } catch {}
+    audioSourceRef.current = null;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  }, [result.id]);
+
+  useEffect(() => {
+    if (!playing || totalDuration <= 0) return;
+    const id = window.setInterval(() => {
+      setElapsed(current => {
+        const next = current + 0.1;
+        if (next >= totalDuration) {
+          playbackTokenRef.current += 1;
+          try { audioSourceRef.current?.stop(); } catch {}
+          audioSourceRef.current = null;
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          setVoiceMode('idle');
+          setPlaying(false);
+          return totalDuration;
+        }
+        return next;
+      });
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [playing, totalDuration]);
+
+  let sceneStart = 0;
+  let activeIndex = 0;
+  for (let index = 0; index < scenes.length; index += 1) {
+    const duration = scenes[index].duration || 6;
+    if (elapsed <= sceneStart + duration || index === scenes.length - 1) {
+      activeIndex = index;
+      break;
+    }
+    sceneStart += duration;
+  }
+
+  const activeScene = scenes[activeIndex] ?? scenes[0];
+  const progress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+
+  const getAudioContext = () => {
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    const context = audioContextRef.current ?? new AudioContextClass();
+    audioContextRef.current = context;
+    if (context.state === 'suspended') void context.resume();
+    return context;
+  };
+
+  const playAudioCue = () => {
+    const context = getAudioContext();
+    if (!context) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(660, context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.14);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+  };
+
+  const sceneText = (scene: VideoGuideScene) =>
+    `${scene.title}. ${scene.caption}${scene.detail ? `. ${scene.detail}` : ''}`;
+
+  const stopNarration = () => {
+    playbackTokenRef.current += 1;
+    try { audioSourceRef.current?.stop(); } catch {}
+    audioSourceRef.current = null;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setVoiceMode('idle');
+  };
+
+  const speakWithBrowserVoice = (index: number) => {
+    const scene = scenes[index];
+    if (!scene) return;
+    lastSpokenIndexRef.current = index;
+
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return;
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(sceneText(scene));
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice =
+      voices.find(voice => voice.lang.toLowerCase().startsWith('en') && /samantha|ava|victoria|zira|jenny|aria|rachel|female|girl/i.test(voice.name)) ??
+      voices.find(voice => voice.lang.toLowerCase().startsWith('en')) ??
+      null;
+    utterance.rate = 0.9;
+    utterance.pitch = 1.08;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.resume();
+    setVoiceMode('browser');
+  };
+
+  const ensureElevenLabsEnabled = async () => {
+    if (elevenLabsEnabledRef.current !== null) return elevenLabsEnabledRef.current;
+
+    try {
+      const res = await fetch('/api/narrate');
+      const json = await res.json().catch(() => null);
+      const enabled = Boolean(json?.enabled);
+      elevenLabsEnabledRef.current = enabled;
+      return enabled;
+    } catch {
+      elevenLabsEnabledRef.current = false;
+      return false;
+    }
+  };
+
+  const playElevenLabsAudio = async (index: number, token: number) => {
+    const scene = scenes[index];
+    const context = getAudioContext();
+    if (!scene || !context) return false;
+    if (!(await ensureElevenLabsEnabled())) {
+      setVoiceMode('setup');
+      return false;
+    }
+
+    const text = sceneText(scene);
+    let buffer = audioCacheRef.current.get(text);
+    if (!buffer) {
+      const res = await fetch('/api/narrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return false;
+      if (!res.headers.get('Content-Type')?.includes('audio/')) {
+        const json = await res.json().catch(() => null);
+        if (json?.enabled === false) {
+          elevenLabsEnabledRef.current = false;
+          setVoiceMode('setup');
+        }
+        return false;
+      }
+      buffer = await context.decodeAudioData(await res.arrayBuffer());
+      audioCacheRef.current.set(text, buffer);
+    }
+
+    if (token !== playbackTokenRef.current) return true;
+
+    try { audioSourceRef.current?.stop(); } catch {}
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.start();
+    audioSourceRef.current = source;
+    lastSpokenIndexRef.current = index;
+    setVoiceMode('elevenlabs');
+    return true;
+  };
+
+  const playSceneNarration = async (index: number, token: number) => {
+    lastSpokenIndexRef.current = index;
+    setVoiceMode('loading');
+    playAudioCue();
+
+    const playedElevenLabs = await playElevenLabsAudio(index, token).catch(() => false);
+    if (token !== playbackTokenRef.current) return;
+    if (!playedElevenLabs) speakWithBrowserVoice(index);
+  };
+
+  const togglePlayback = () => {
+    if (playing) {
+      stopNarration();
+      setPlaying(false);
+      return;
+    }
+
+    const restart = elapsed >= totalDuration;
+    const sceneIndex = restart ? 0 : activeIndex;
+    if (restart) setElapsed(0);
+    const token = playbackTokenRef.current + 1;
+    playbackTokenRef.current = token;
+    setPlaying(true);
+    void playSceneNarration(sceneIndex, token);
+  };
+
+  useEffect(() => {
+    if (!playing || lastSpokenIndexRef.current === activeIndex) return;
+    const token = playbackTokenRef.current + 1;
+    playbackTokenRef.current = token;
+    try { audioSourceRef.current?.stop(); } catch {}
+    audioSourceRef.current = null;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    void playSceneNarration(activeIndex, token);
+  }, [playing, activeIndex]);
+
+  useEffect(() => {
+    return () => {
+      playbackTokenRef.current += 1;
+      try { audioSourceRef.current?.stop(); } catch {}
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      void audioContextRef.current?.close();
+    };
+  }, []);
+
+  if (!activeScene) return null;
+
+  return (
+    <div className="mb-6 overflow-hidden rounded-2xl bg-botanical-primary-container text-white shadow-lg">
+      <div className="relative aspect-video overflow-hidden">
+        <motion.img
+          src={result.imageSrc}
+          alt={result.plant}
+          className="h-full w-full object-cover"
+          animate={playing ? { scale: 1.18, x: activeIndex % 2 === 0 ? '-5%' : '5%', y: activeIndex % 3 === 0 ? '-3%' : '2%' } : { scale: 1.02, x: '0%', y: '0%' }}
+          transition={{ duration: Math.max(6, activeScene.duration || 6), ease: 'linear' }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/35" />
+        {playing && (
+          <>
+            <motion.div
+              className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+              animate={{ x: ['0%', '430%'] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
+            />
+            <motion.div
+              className="absolute left-1/2 top-1/2 h-32 w-44 -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-botanical-primary/70 shadow-[0_0_28px_rgba(149,212,179,0.45)]"
+              animate={{ scale: [0.92, 1.08, 0.92], opacity: [0.4, 0.9, 0.4] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </>
+        )}
+        <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-md">
+          <Clapperboard className="h-3.5 w-3.5 text-botanical-primary" />
+          <span className="font-mono text-[9px] font-bold uppercase tracking-widest">AI Video Guide</span>
+        </div>
+        {playing && (
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-md">
+            <Volume2 className="h-3.5 w-3.5 text-botanical-primary" />
+            <span className="font-mono text-[9px] font-bold uppercase tracking-widest">
+              {voiceMode === 'elevenlabs' ? 'ElevenLabs' : voiceMode === 'loading' ? 'Loading Voice' : voiceMode === 'setup' ? 'Browser Voice' : 'Narrating'}
+            </span>
+          </div>
+        )}
+        <button
+          onClick={togglePlayback}
+          className={`absolute inset-0 z-10 ${playing ? 'cursor-pointer' : 'flex items-center justify-center'}`}
+          title={playing ? 'Pause video guide' : 'Play video guide'}
+          aria-label={playing ? 'Pause video guide' : 'Play video guide'}
+        >
+          {!playing && (
+            <motion.span
+              whileTap={{ scale: 0.9 }}
+              className="flex h-16 w-16 items-center justify-center rounded-full border border-white/25 bg-black/50 backdrop-blur-md"
+            >
+              <Play className="ml-1 h-7 w-7" />
+            </motion.span>
+          )}
+        </button>
+        <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-none">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${activeIndex}-${activeScene.title}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-1"
+            >
+              <p className="font-serif text-lg leading-tight">{activeScene.title}</p>
+              <p className="font-body text-sm leading-snug text-white/90">{activeScene.caption}</p>
+              {activeScene.detail && (
+                <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-light-green">{activeScene.detail}</p>
+              )}
+            </motion.div>
+          </AnimatePresence>
+          <div className="mt-3 grid grid-cols-4 gap-1.5">
+            {scenes.map((scene, index) => (
+              <div
+                key={`${scene.title}-${index}`}
+                className={`h-1.5 rounded-full ${index <= activeIndex ? 'bg-botanical-primary' : 'bg-white/25'}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="bg-botanical-surface px-4 py-3 text-botanical-on-surface">
+        <div
+          className="h-1.5 w-full cursor-pointer overflow-hidden rounded-full bg-botanical-surface-high"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setElapsed(Math.max(0, Math.min(totalDuration, ((event.clientX - rect.left) / rect.width) * totalDuration)));
+          }}
+        >
+          <div className="h-full rounded-full bg-botanical-primary transition-all" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <button
+            onClick={togglePlayback}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-botanical-primary text-white"
+            title={playing ? 'Pause video guide' : 'Play video guide'}
+          >
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-botanical-primary">{result.videoGuide?.title || `${result.plant} AI Care Video`}</p>
+            <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline">
+              Scene {activeIndex + 1}/{scenes.length}
+            </p>
+          </div>
+          <span className="font-mono text-[9px] text-botanical-outline">{formatVideoTime(elapsed)} / {formatVideoTime(totalDuration)}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -27,6 +447,8 @@ function PlantResultPanel({
 }) {
   const totalTasks = result.taskGroups.reduce((sum, g) => sum + g.tasks.length, 0);
   const doneCount = result.taskGroups.reduce((sum, g) => sum + g.tasks.filter(t => t.done).length, 0);
+  const confidence = Math.round((result.confidence || 0) * 100);
+  const visualEvidence = result.visualEvidence?.filter(Boolean).slice(0, 3) ?? [];
 
   return (
     <motion.div
@@ -51,6 +473,17 @@ function PlantResultPanel({
             <h2 className="font-serif text-xl text-botanical-primary leading-tight">{result.plant}</h2>
             <p className="font-mono text-[10px] text-botanical-outline italic mb-1">{result.scientificName}</p>
             <p className="font-body text-xs text-botanical-on-surface-variant leading-relaxed">{result.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-botanical-light-green px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-botanical-primary">
+                <BadgeCheck className="h-3 w-3" />
+                {confidence}% confidence
+              </span>
+              {result.alternatives.slice(0, 1).map(alternative => (
+                <span key={alternative} className="rounded-full bg-botanical-surface-high px-2.5 py-1 text-[10px] font-semibold text-botanical-on-surface-variant">
+                  Alt: {alternative}
+                </span>
+              ))}
+            </div>
           </div>
           <button onClick={onDismiss} className="w-8 h-8 rounded-full bg-botanical-surface-high flex items-center justify-center flex-shrink-0">
             <X className="w-4 h-4 text-botanical-outline" />
@@ -65,11 +498,26 @@ function PlantResultPanel({
           <QuickFactCard icon={<Wind className="w-3 h-3" />} label="Humidity" value={result.quickFacts.humidity} />
         </div>
 
-        {/* Saved path */}
-        <div className="bg-botanical-surface rounded-xl px-4 py-3 mb-6">
-          <p className="font-mono text-[9px] uppercase tracking-widest text-botanical-outline mb-1">Guide saved to</p>
-          <p className="font-mono text-[10px] text-botanical-secondary break-all">{result.jsonPath}</p>
-        </div>
+        {(visualEvidence.length > 0 || result.diagnosticNotes) && (
+          <div className="mb-6 rounded-xl bg-botanical-surface px-4 py-3">
+            <p className="mb-2 font-mono text-[9px] uppercase tracking-widest text-botanical-secondary">Identification check</p>
+            {visualEvidence.length > 0 && (
+              <div className="space-y-1.5">
+                {visualEvidence.map(item => (
+                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-botanical-on-surface-variant">
+                    <BadgeCheck className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-botanical-secondary" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {result.diagnosticNotes && (
+              <p className="mt-2 text-xs leading-relaxed text-botanical-on-surface-variant">{result.diagnosticNotes}</p>
+            )}
+          </div>
+        )}
+
+        <AiVideoGuide result={result} />
 
         {/* Care guide header */}
         <div className="flex items-baseline justify-between mb-5">
@@ -138,7 +586,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [camState, setCamState] = useState<'loading' | 'active' | 'denied' | 'error'>('loading');
-  const [phase, setPhase] = useState<'idle' | 'saving' | 'analyzing' | 'done' | 'error'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'saving' | 'analyzing' | 'done' | 'retry' | 'error'>('idle');
   const [result, setResult] = useState<PlantResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -173,37 +621,34 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
     };
   }, []);
 
+  const showRetryMessage = (message: string) => {
+    setErrorMessage(message);
+    setPhase('retry');
+    setTimeout(() => setPhase('idle'), 4500);
+  };
+
   const handleImageData = async (data: string, filename: string) => {
     setErrorMessage('');
-    setPhase('saving');
-    let filePath = '';
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, data }),
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      filePath = (await res.json()).path;
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Upload failed');
-      setPhase('error');
-      setTimeout(() => setPhase('idle'), 2500);
-      return;
-    }
-
     setPhase('analyzing');
     try {
       const res = await fetch('/api/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData: data, imagePath: filePath }),
+        body: JSON.stringify({ imageData: data, filename }),
       });
+      const json = await res.json().catch(() => null);
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: 'Plant identification failed' }));
-        throw new Error(error);
+        const message = typeof json?.error === 'string' ? json.error : 'Plant identification failed';
+        if (res.status === 422) {
+          showRetryMessage(message);
+          return;
+        }
+        throw new Error(message);
       }
-      const json = await res.json();
+      if (json?.ok === false) {
+        showRetryMessage(typeof json.error === 'string' ? json.error : 'Try another clear plant photo.');
+        return;
+      }
 
       setResult({
         id: json.id,
@@ -214,6 +659,10 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
         imageUrl: json.imageUrl,
         imageSrc: data,
         jsonPath: json.jsonPath,
+        confidence: typeof json.confidence === 'number' ? json.confidence : 0,
+        alternatives: Array.isArray(json.alternatives) ? json.alternatives : [],
+        visualEvidence: Array.isArray(json.visualEvidence) ? json.visualEvidence : [],
+        diagnosticNotes: typeof json.diagnosticNotes === 'string' ? json.diagnosticNotes : '',
         quickFacts: json.quickFacts ?? { difficulty: '', light: '', water: '', humidity: '' },
         taskGroups: (json.taskGroups ?? []).map((group: any, gi: number) => ({
           category: group.category,
@@ -226,6 +675,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
           })),
         })),
         tips: json.tips ?? [],
+        videoGuide: json.videoGuide ?? { title: `${json.plant ?? 'Plant'} AI Care Video`, scenes: [] },
       });
       setPhase('done');
     } catch (err) {
@@ -239,14 +689,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
   const handleCapture = () => {
     const video = videoRef.current;
     if (!video || camState !== 'active' || phase !== 'idle') return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    context?.translate(canvas.width, 0);
-    context?.scale(-1, 1);
-    context?.drawImage(video, 0, 0);
-    handleImageData(canvas.toDataURL('image/jpeg', 0.9), `plant_${Date.now()}.jpg`);
+    handleImageData(captureVideoFrame(video), `plant_${Date.now()}.jpg`);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,7 +702,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-    handleImageData(data, file.name);
+    handleImageData(await resizeImageData(data), file.name);
   };
 
   const toggleTask = (groupIdx: number, taskId: string) =>
@@ -289,7 +732,7 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
         <div className="flex items-center gap-2 bg-black/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
           <div className={`w-2 h-2 rounded-full ${camState === 'active' ? 'bg-botanical-primary animate-pulse' : 'bg-white/30'}`} />
           <span className="font-mono text-[10px] uppercase tracking-widest">
-            {phase === 'analyzing' ? 'Identifying Plant…' : phase === 'saving' ? 'Saving…' : camState === 'loading' ? 'Starting Camera…' : camState === 'active' ? 'Digital Greenhouse' : 'Camera Unavailable'}
+            {phase === 'analyzing' ? 'Identifying Plant…' : phase === 'saving' ? 'Saving…' : phase === 'retry' ? 'Try Another Scan' : camState === 'loading' ? 'Starting Camera…' : camState === 'active' ? 'Digital Greenhouse' : 'Camera Unavailable'}
           </span>
         </div>
         <div className="w-10" />
@@ -381,6 +824,17 @@ export function ScannerView({ onBack }: { onBack: () => void }) {
                     <p className="font-mono text-[10px] uppercase tracking-widest text-red-300">Something went wrong</p>
                     {errorMessage && (
                       <p className="font-body text-xs leading-relaxed text-white/60 break-words">{errorMessage}</p>
+                    )}
+                  </div>
+                </>
+              )}
+              {phase === 'retry' && (
+                <>
+                  <Leaf className="w-10 h-10 text-botanical-primary" />
+                  <div className="max-w-xs px-4 text-center space-y-2">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-botanical-primary">Try another scan</p>
+                    {errorMessage && (
+                      <p className="font-body text-xs leading-relaxed text-white/70 break-words">{errorMessage}</p>
                     )}
                   </div>
                 </>

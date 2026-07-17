@@ -34,6 +34,11 @@ export default function App() {
     setCurrentView('LOGIN');
   };
 
+  const handleUpdateUser = (updatedUser: AuthUser) => {
+    persistUser(updatedUser);
+    setUser(updatedUser);
+  };
+
   return (
     <div className="relative min-h-screen bg-botanical-bg text-botanical-on-surface overflow-x-hidden selection:bg-botanical-secondary selection:text-white">
       <AnimatePresence mode="wait">
@@ -49,7 +54,7 @@ export default function App() {
         )}
         {currentView === 'PROFILE' && (
           <motion.div key="profile" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }} className="w-full">
-            <ProfileView user={user} onLogout={handleLogout} onOpenGuide={() => setShowGuide(true)} />
+            <ProfileView user={user} onLogout={handleLogout} onOpenGuide={() => setShowGuide(true)} onUpdateUser={handleUpdateUser} />
           </motion.div>
         )}
         {currentView === 'SCAN' && (

@@ -29,3 +29,16 @@ View your app in AI Studio: https://ai.studio/apps/5c7be975-0be1-420c-b06a-f826e
 - `npm run preview` — serve an existing production build on port 3000 (run `npm run build` first)
 - `npm run lint` — type-check with `tsc --noEmit`
 - `npm run clean` — remove the `dist/` directory
+
+## Production Environment
+
+The deployed server must have plant-identification secrets configured as runtime
+environment variables. Local `.env` files are ignored by git and are not deployed.
+
+Set either:
+
+- `API_KEY` and `APP_ID` for Qianfan, plus optional `QIANFAN_MODEL`
+- `GEMINI_API_KEY` for Gemini fallback, plus optional `GEMINI_MODEL`
+
+After changing production environment variables, restart or redeploy the site so
+the API server picks them up.

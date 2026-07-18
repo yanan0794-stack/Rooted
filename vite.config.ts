@@ -1,4 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
+import { GoogleGenAI } from '@google/genai';
 import react from '@vitejs/plugin-react';
 import { createRequire } from 'module';
 import fs from 'fs';
@@ -11,10 +12,24 @@ const _require = createRequire(import.meta.url);
 // ── SQLite: initialised once at Vite startup ──────────────────
 const DATA_DIR = path.resolve(__dirname, 'data');
 const DEFAULT_QIANFAN_MODEL = 'qwen3-vl-235b-a22b-instruct';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEFAULT_ELEVENLABS_MODEL = 'eleven_multilingual_v2';
 const DEFAULT_ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel, premade female voice
 const IDENTIFICATION_CONFIDENCE_THRESHOLD = 0.75;
 const CARE_GROUP_CATEGORIES = ['Watering', 'Light', 'Soil & Fertilizer', 'Pruning & Cleaning'];
+const IDENTIFICATION_SYSTEM_PROMPT = 'You are a botanical visual identification verifier. Accuracy is more important than giving an answer. First infer only visible traits from the image, then choose a plant name only when those traits support it. If the exact species is uncertain, use a genus-level name, list lookalikes, lower confidence, and do not invent care research. Respond ONLY with valid JSON.';
+const IDENTIFICATION_USER_PROMPT = `Identify this plant only from visible image evidence, then build a care guide only if the identification is supported. Respond ONLY with JSON matching this exact shape:
+{"isPlant":true,"confidence":0.0,"plant":"Common Name or Genus sp.","scientificName":"Genus species or Genus sp.","alternatives":["Possible lookalike 1","Possible lookalike 2"],"visualEvidence":["visible leaf/stem/flower trait 1","visible trait 2"],"diagnosticNotes":"One concise sentence explaining why this ID fits and how it differs from the closest lookalike.","description":"Two concise, care-relevant sentences. Mention visual traits and habitat only if known; avoid folklore, symbolism, or decorative claims.","quickFacts":{"difficulty":"Easy|Medium|Hard","light":"specific indoor/outdoor light range","water":"soil dryness cue plus approximate interval","humidity":"specific humidity preference"},"taskGroups":[{"category":"Watering","tasks":[{"title":"Short action title","detail":"Specific step-by-step instruction for this plant.","frequency":"e.g. Weekly"}]},{"category":"Light","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Soil & Fertilizer","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Pruning & Cleaning","tasks":[{"title":"...","detail":"...","frequency":"..."}]}],"tips":["Accurate pro tip 1","Accurate pro tip 2","Accurate pro tip 3"],"videoGuide":{"title":"Short video title","scenes":[{"title":"Scene title","caption":"Voiceover line using the plant data.","detail":"Short on-screen detail.","duration":6}]}}
+Rules:
+- Set isPlant=false and confidence below 0.5 if no plant is visible.
+- Confidence must reflect visual certainty: below 0.75 for blurry, partial, juvenile, or lookalike-heavy photos; 0.75-0.85 for plausible but not diagnostic; above 0.85 only when multiple diagnostic traits are visible.
+- If you cannot support the exact species from visible traits, use "Genus sp." or return low confidence. Do not guess a precise species just to complete the guide.
+- Always provide 2-4 visualEvidence items for successful IDs. They must be visible in the photo, not general facts.
+- Do not fabricate research. Care guidance must be standard horticultural care for the selected species/genus and must include condition-based watering, not a fixed schedule alone.
+- Compare common lookalikes before finalizing. Important: small coin-shaped opposite leaves on reddish/purple thin stems are more consistent with Portulacaria afra (Elephant Bush) than Crassula ovata (Jade Plant); Jade usually has larger thick oval leaves and woodier stems. Also distinguish Pilea/Peperomia, Pothos/Philodendron, Monstera/Rhaphidophora, Aloe/Haworthia, and Dracaena/Sansevieria.
+- Use "alternatives" for plausible similar species and explain the difference in diagnosticNotes.
+- Provide all 4 task groups with 1-3 actionable tasks each only when confidence is 0.75 or higher.
+- Provide 3-5 videoGuide scenes that reuse the identified plant and care data text.`;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const BetterSqlite = _require('better-sqlite3');
@@ -96,6 +111,12 @@ function imageBufferFromDataUrl(data: string) {
     buffer: Buffer.from(match[2], 'base64'),
     mime: match[1],
   };
+}
+
+function parseModelJson(content: string) {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return JSON.parse(fenced ? fenced[1] : trimmed);
 }
 
 function imageExtension(filename: string, mime: string) {
@@ -541,11 +562,34 @@ function narrationApiPlugin(apiKey: string, voiceId: string, modelId: string) {
   };
 }
 
+async function identifyWithGemini(geminiApiKey: string, geminiModel: string, imageData: string) {
+  const { buffer, mime } = imageBufferFromDataUrl(imageData);
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+  const completion = await ai.models.generateContent({
+    model: geminiModel,
+    contents: [
+      { inlineData: { mimeType: mime, data: buffer.toString('base64') } },
+      { text: IDENTIFICATION_USER_PROMPT },
+    ],
+    config: {
+      systemInstruction: IDENTIFICATION_SYSTEM_PROMPT,
+      responseMimeType: 'application/json',
+      maxOutputTokens: 1400,
+    },
+  });
+
+  const text = completion.text;
+  if (!text) throw new Error(`Gemini model "${geminiModel}" returned an empty response.`);
+  return parseModelJson(text);
+}
+
 // ── Plugin: /api/identify  (AI inference + COS JSON storage) ──
 function identifyApiPlugin(
   apiKey: string,
   appId: string,
   aiModel: string,
+  geminiApiKey: string,
+  geminiModel: string,
   secretId: string,
   secretKey: string,
   bucket: string,
@@ -564,8 +608,10 @@ function identifyApiPlugin(
         let imageSaveError: unknown = null;
         try {
           if (req.method !== 'POST') { jsonError(res, 405, 'Method not allowed'); return; }
-          if (!apiKey || !appId) {
-            jsonError(res, 500, 'API_KEY and APP_ID must be set in your .env file.'); return;
+          const hasQianfanConfig = hasUsableSecret(apiKey) && hasUsableSecret(appId);
+          const hasGeminiConfig = hasUsableSecret(geminiApiKey);
+          if (!hasQianfanConfig && !hasGeminiConfig) {
+            jsonError(res, 500, 'Plant identification is not configured on this server. Set API_KEY and APP_ID for Qianfan, or set GEMINI_API_KEY for Gemini, in the production environment.'); return;
           }
 
           const { imageData, imagePath, filename } = JSON.parse(await readBody(req)) as {
@@ -597,54 +643,53 @@ function identifyApiPlugin(
               return '';
             });
 
-          // ── Call Qianfan / vision model ──────────────────────
-          const aiRes = await fetch('https://qianfan.baidubce.com/v2/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`,
-              'appid': appId,
-            },
-            body: JSON.stringify({
-              model: aiModel,
-              messages: [
-                {
-                  role: 'system',
-                  content: 'You are a botanical visual identification verifier. Accuracy is more important than giving an answer. First infer only visible traits from the image, then choose a plant name only when those traits support it. If the exact species is uncertain, use a genus-level name, list lookalikes, lower confidence, and do not invent care research. Respond ONLY with valid JSON.',
-                },
-                {
-                  role: 'user',
-                  content: [
-                    { type: 'image_url', image_url: { url: imageData } },
-                    {
-                      type: 'text',
-                      text: `Identify this plant only from visible image evidence, then build a care guide only if the identification is supported. Respond ONLY with JSON matching this exact shape:
-{"isPlant":true,"confidence":0.0,"plant":"Common Name or Genus sp.","scientificName":"Genus species or Genus sp.","alternatives":["Possible lookalike 1","Possible lookalike 2"],"visualEvidence":["visible leaf/stem/flower trait 1","visible trait 2"],"diagnosticNotes":"One concise sentence explaining why this ID fits and how it differs from the closest lookalike.","description":"Two concise, care-relevant sentences. Mention visual traits and habitat only if known; avoid folklore, symbolism, or decorative claims.","quickFacts":{"difficulty":"Easy|Medium|Hard","light":"specific indoor/outdoor light range","water":"soil dryness cue plus approximate interval","humidity":"specific humidity preference"},"taskGroups":[{"category":"Watering","tasks":[{"title":"Short action title","detail":"Specific step-by-step instruction for this plant.","frequency":"e.g. Weekly"}]},{"category":"Light","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Soil & Fertilizer","tasks":[{"title":"...","detail":"...","frequency":"..."}]},{"category":"Pruning & Cleaning","tasks":[{"title":"...","detail":"...","frequency":"..."}]}],"tips":["Accurate pro tip 1","Accurate pro tip 2","Accurate pro tip 3"],"videoGuide":{"title":"Short video title","scenes":[{"title":"Scene title","caption":"Voiceover line using the plant data.","detail":"Short on-screen detail.","duration":6}]}}
-Rules:
-- Set isPlant=false and confidence below 0.5 if no plant is visible.
-- Confidence must reflect visual certainty: below 0.75 for blurry, partial, juvenile, or lookalike-heavy photos; 0.75-0.85 for plausible but not diagnostic; above 0.85 only when multiple diagnostic traits are visible.
-- If you cannot support the exact species from visible traits, use "Genus sp." or return low confidence. Do not guess a precise species just to complete the guide.
-- Always provide 2-4 visualEvidence items for successful IDs. They must be visible in the photo, not general facts.
-- Do not fabricate research. Care guidance must be standard horticultural care for the selected species/genus and must include condition-based watering, not a fixed schedule alone.
-- Compare common lookalikes before finalizing. Important: small coin-shaped opposite leaves on reddish/purple thin stems are more consistent with Portulacaria afra (Elephant Bush) than Crassula ovata (Jade Plant); Jade usually has larger thick oval leaves and woodier stems. Also distinguish Pilea/Peperomia, Pothos/Philodendron, Monstera/Rhaphidophora, Aloe/Haworthia, and Dracaena/Sansevieria.
-- Use "alternatives" for plausible similar species and explain the difference in diagnosticNotes.
-- Provide all 4 task groups with 1-3 actionable tasks each only when confidence is 0.75 or higher.
-- Provide 3-5 videoGuide scenes that reuse the identified plant and care data text.`,
-                    },
-                  ],
-                },
-              ],
-              response_format: { type: 'json_object' },
-              max_tokens: 1400,
-            }),
-          });
+          let parsed: any;
+          if (hasQianfanConfig) {
+            // ── Call Qianfan / vision model ──────────────────────
+            const aiRes = await fetch('https://qianfan.baidubce.com/v2/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'appid': appId,
+              },
+              body: JSON.stringify({
+                model: aiModel,
+                messages: [
+                  {
+                    role: 'system',
+                    content: IDENTIFICATION_SYSTEM_PROMPT,
+                  },
+                  {
+                    role: 'user',
+                    content: [
+                      { type: 'image_url', image_url: { url: imageData } },
+                      {
+                        type: 'text',
+                        text: IDENTIFICATION_USER_PROMPT,
+                      },
+                    ],
+                  },
+                ],
+                response_format: { type: 'json_object' },
+                max_tokens: 1400,
+              }),
+            });
 
-          if (!aiRes.ok) {
-            jsonError(res, 502, aiErrorMessage(aiRes.status, aiModel, await aiRes.text())); return;
+            if (!aiRes.ok) {
+              jsonError(res, 502, aiErrorMessage(aiRes.status, aiModel, await aiRes.text())); return;
+            }
+
+            const completion = (await aiRes.json()) as { choices: { message: { content: string } }[] };
+            parsed = parseModelJson(completion.choices[0].message.content);
+          } else {
+            try {
+              parsed = await identifyWithGemini(geminiApiKey, geminiModel, imageData);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              jsonError(res, 502, `Gemini API for model "${geminiModel}": ${message}`); return;
+            }
           }
-
-          const completion = (await aiRes.json()) as { choices: { message: { content: string } }[] };
-          const parsed = JSON.parse(completion.choices[0].message.content);
           const hasModelConfidence = hasConfidenceValue(parsed.confidence);
 
           const normalized = {
@@ -717,6 +762,7 @@ function withPreview(plugin: any) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const aiModel = env.QIANFAN_MODEL || env.AI_MODEL || DEFAULT_QIANFAN_MODEL;
+  const geminiModel = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   const elevenLabs = {
     apiKey:  env.ELEVENLABS_API_KEY ?? '',
     voiceId: env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID,
@@ -739,7 +785,7 @@ export default defineConfig(({ mode }) => {
       withPreview(uploadApiPlugin(cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain)),
       withPreview(libraryApiPlugin()),
       withPreview(narrationApiPlugin(elevenLabs.apiKey, elevenLabs.voiceId, elevenLabs.model)),
-      withPreview(identifyApiPlugin(env.API_KEY, env.APP_ID, aiModel, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain)),
+      withPreview(identifyApiPlugin(env.API_KEY, env.APP_ID, aiModel, env.GEMINI_API_KEY, geminiModel, cos.secretId, cos.secretKey, cos.bucket, cos.region, cos.domain)),
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
